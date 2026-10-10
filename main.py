@@ -1,105 +1,209 @@
-<<<<<<< HEAD
 import argparse
+
 from config import SimulationConfig
 from simulation.traffic_simulator import TrafficSimulator
-from ml.forecasting import train,load_or_train
 from utils.display import comparison
 
-def main():
- p=argparse.ArgumentParser();p.add_argument("--demo",action="store_true");p.add_argument("--train-ml",action="store_true");p.add_argument("--compare",action="store_true");p.add_argument("--run-fpac",action="store_true");p.add_argument("--data");p.add_argument("--model",default="random_forest",choices=["historical_average","random_forest","xgboost"]);p.add_argument("--steps",type=int,default=100);p.add_argument("--lookback",type=int,default=12);a=p.parse_args();cfg=SimulationConfig(steps=a.steps)
- if a.train_ml:
-  model,metrics,path=train(a.data,a.model,a.lookback);print("ML metrics:",metrics);print("Saved:",path);return
- f=None
- if a.data:f=load_or_train(a.data,a.model,a.lookback)
- if a.compare:
-  rs=[TrafficSimulator(cfg,f).run(c) for c in ("fixed","longest_queue","max_pressure","fpac")];comparison(rs);return
- r=TrafficSimulator(cfg,f).run("fpac" if a.run_fpac else "longest_queue");print(r.summary())
-if __name__=="__main__":main()
-=======
-import random
-from config import DEFAULT_SIMULATION_STEPS, RANDOM_SEED
-from models.intersection import Intersection
-from data_structures.graph import Graph
-from algorithms.routing import RoutePlanner
-from simulation.simulator import TrafficSimulator
-from utils.display import print_title, print_menu, get_choice
-
-def create_road_network():
-    graph = Graph()
-    graph.add_edge("A", "B", 5)
-    graph.add_edge("A", "C", 3)
-    graph.add_edge("B", "C", 2)
-    graph.add_edge("B", "D", 4)
-    graph.add_edge("C", "D", 6)
-    graph.add_edge("C", "E", 5)
-    graph.add_edge("D", "E", 2)
-    return graph
-
-def create_intersections():
-    intersections = {}
-    lane_map = {
-        "A": [("A_B","A","B"), ("A_C","A","C")],
-        "B": [("B_A","B","A"), ("B_C","B","C"), ("B_D","B","D")],
-        "C": [("C_A","C","A"), ("C_B","C","B"), ("C_D","C","D"), ("C_E","C","E")],
-        "D": [("D_B","D","B"), ("D_C","D","C"), ("D_E","D","E")],
-        "E": [("E_C","E","C"), ("E_D","E","D")],
-    }
-    for node, lanes in lane_map.items():
-        intersection = Intersection(node)
-        for lane_id, source, destination in lanes:
-            intersection.add_lane(lane_id, source, destination)
-        intersections[node] = intersection
-    return intersections
-
-def run_simulation(adaptive):
-    random.seed(RANDOM_SEED)
-    mode = "ADAPTIVE" if adaptive else "FIXED"
-    print_title(f"{mode} TRAFFIC SIGNAL SIMULATION")
-    simulator = TrafficSimulator(create_intersections(), create_road_network(), adaptive)
-    simulator.run(DEFAULT_SIMULATION_STEPS)
-    return simulator
-
-def display_network():
-    create_road_network().display()
-
-def test_shortest_route():
-    planner = RoutePlanner(create_road_network())
-    print_title("DIJKSTRA SHORTEST PATH")
-    source = input("Enter source intersection (A-E): ").upper()
-    destination = input("Enter destination intersection (A-E): ").upper()
-    planner.print_route(source, destination)
-
-def compare_algorithms():
-    print_title("ADAPTIVE VS FIXED SIGNAL COMPARISON")
-    adaptive = run_simulation(True)
-    fixed = run_simulation(False)
-    a = adaptive.statistics.average_waiting_time()
-    f = fixed.statistics.average_waiting_time()
-    print_title("FINAL COMPARISON")
-    print(f"Adaptive Signal Average Wait: {a:.2f}")
-    print(f"Fixed Signal Average Wait:    {f:.2f}")
-    if f > 0:
-        improvement = ((f - a) / f) * 100
-        print(f"Adaptive improvement: {improvement:.2f}%")
 
 def main():
-    while True:
-        print_menu()
-        choice = get_choice()
-        if choice == 1:
-            run_simulation(True)
-        elif choice == 2:
-            run_simulation(False)
-        elif choice == 3:
-            display_network()
-        elif choice == 4:
-            test_shortest_route()
-        elif choice == 5:
-            compare_algorithms()
-        else:
-            print("\nThank you for using Traffic Signal Simulator!")
-            break
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo", action="store_true")
+    parser.add_argument("--train-ml", action="store_true")
+    parser.add_argument("--compare", action="store_true")
+    parser.add_argument("--run-fpac", action="store_true")
+    parser.add_argument("--animate", action="store_true", help="Open the interactive Pygame simulation")
+    parser.add_argument("--network", action="store_true", help="Run the multi-intersection network simulator")
+    parser.add_argument("--train-ppo", action="store_true", help="Train shared-policy PPO for the network")
+    parser.add_argument(
+        "--train-ppo-current-only",
+        action="store_true",
+        help="Train a matched PPO ablation without forecast features",
+    )
+    parser.add_argument("--robustness", action="store_true", help="Evaluate network controllers under changed conditions")
+    parser.add_argument(
+        "--current-only",
+        action="store_true",
+        help="Hide forecasts from network controller observations",
+    )
+    parser.add_argument(
+        "--controller",
+        choices=["fixed", "longest_queue", "max_pressure", "forecast", "spillback", "ppo"],
+        default="spillback",
+    )
+    parser.add_argument("--timesteps", type=int, default=5_000)
+    parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument("--output", help="Optional CSV path for robustness results")
+    parser.add_argument("--data")
+    parser.add_argument(
+        "--model",
+        default="random_forest",
+        choices=["historical_average", "random_forest", "xgboost"],
+    )
+    parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--lookback", type=int, default=12)
+    args = parser.parse_args()
+    cfg = SimulationConfig(steps=args.steps)
+
+    if args.train_ml:
+        from ml.forecasting import train
+
+        _, metrics, path = train(args.data, args.model, args.lookback)
+        print("ML metrics:", metrics)
+        print("Saved:", path)
+        return
+
+    if args.train_ppo and args.train_ppo_current_only:
+        parser.error("Choose only one PPO training mode.")
+    if (args.train_ppo or args.train_ppo_current_only) and not args.network:
+        parser.error("PPO training requires --network")
+    if args.train_ppo and args.current_only:
+        parser.error("Use --train-ppo-current-only to train without forecast features.")
+
+    if args.network:
+        from simulation.network_simulator import NetworkSimulationConfig, NetworkTrafficSimulator
+
+        network_cfg = NetworkSimulationConfig(
+            seed=cfg.seed,
+            steps=args.steps,
+            arrivals_per_step=cfg.arrivals_per_step / 2,
+            lane_capacity=cfg.lane_capacity,
+            road_capacity=12,
+            min_green_steps=cfg.min_green_steps,
+            max_green_steps=cfg.max_green_steps,
+            forecast_observation=not args.current_only,
+        )
+
+        if args.train_ppo or args.train_ppo_current_only:
+            from simulation.ppo_controller import (
+                CURRENT_ONLY_MODEL_PATH,
+                MODEL_PATH,
+                train_ppo,
+            )
+
+            train_forecast_model = args.train_ppo
+            training_config = network_cfg
+            model_path = MODEL_PATH
+            if args.train_ppo_current_only:
+                from dataclasses import replace
+
+                training_config = replace(network_cfg, forecast_observation=False)
+                model_path = CURRENT_ONLY_MODEL_PATH
+                train_forecast_model = False
+            try:
+                model_path = train_ppo(training_config, args.timesteps, model_path)
+            except KeyboardInterrupt:
+                print(
+                    "\nPPO training interrupted. A partial checkpoint was saved to "
+                    f"{model_path}. It can be evaluated, but train longer before "
+                    "drawing research conclusions."
+                )
+                return
+            if train_forecast_model:
+                print("Trained PPO with forecast features enabled.")
+            else:
+                print("Trained current-state-only PPO ablation.")
+            print(f"Saved shared-policy PPO model: {model_path}")
+            return
+
+        forecaster = None
+        sensor_profile = None
+        if args.data and not (args.train_ppo or args.train_ppo_current_only):
+            from ml.dataset import aggregate_flow, load_flow_csv
+            from ml.forecasting import load_or_train
+
+            forecaster = load_or_train(args.data, args.model, args.lookback)
+            sensor_profile = aggregate_flow(load_flow_csv(args.data))
+
+        if args.robustness:
+            from simulation.robustness import run_robustness_suite, summarize_robustness
+
+            ppo_policy = None
+            if args.controller == "ppo":
+                from simulation.ppo_controller import (
+                    CURRENT_ONLY_MODEL_PATH,
+                    MODEL_PATH,
+                    load_ppo,
+                )
+
+                ppo_policy = load_ppo(
+                    CURRENT_ONLY_MODEL_PATH if args.current_only else MODEL_PATH
+                )
+            output_path = args.output or (
+                "results/network_robustness_current_only.csv"
+                if args.current_only
+                else "results/network_robustness.csv"
+            )
+            rows = run_robustness_suite(
+                network_cfg,
+                args.seeds,
+                output_path,
+                ppo_policy,
+                forecaster,
+                sensor_profile,
+            )
+            print(f"Completed {len(rows)} matched scenario runs.")
+            print(f"Detailed results saved to: {output_path}")
+            print("scenario             controller       wait mean    std   95% CI   avg queue   trip sec   throughput   blocked")
+            for row in summarize_robustness(rows):
+                wait_ci = row["average_wait_steps_ci95"]
+                ci_margin = (wait_ci[1] - wait_ci[0]) / 2 if wait_ci is not None else None
+                deviation = row["average_wait_steps_std"]
+                deviation_text = f"{deviation:.2f}" if deviation is not None else "n/a"
+                ci_text = f"{ci_margin:.2f}" if ci_margin is not None else "n/a"
+                print(
+                    f"{row['scenario']:<21}{row['controller']:<17}"
+                    f"{row['average_wait_steps_mean']:>9.2f}"
+                    f"{deviation_text:>8}{ci_text:>9}"
+                    f"{row['average_queue_mean']:>12.2f}"
+                    f"{row['average_travel_time_steps_mean']:>11.2f}"
+                    f"{row['throughput_mean']:>13.1f}"
+                    f"{row['spillback_blocked_mean']:>10.1f}"
+                )
+            return
+
+        simulator = NetworkTrafficSimulator(network_cfg, forecaster, sensor_profile)
+        policy = None
+        if args.controller == "ppo":
+            from simulation.ppo_controller import (
+                CURRENT_ONLY_MODEL_PATH,
+                MODEL_PATH,
+                load_ppo,
+            )
+
+            policy = load_ppo(CURRENT_ONLY_MODEL_PATH if args.current_only else MODEL_PATH)
+        if args.animate:
+            from simulation.network_pygame_viewer import run_network_viewer
+
+            run_network_viewer(simulator, args.controller, policy)
+            return
+        result = simulator.run(args.controller, policy)
+        print(result.summary())
+        return
+
+    forecaster = None
+    if args.data:
+        from ml.forecasting import load_or_train
+
+        forecaster = load_or_train(args.data, args.model, args.lookback)
+    if args.animate:
+        from simulation.pygame_viewer import run_viewer
+
+        run_viewer(TrafficSimulator(cfg, forecaster))
+        return
+
+    if args.compare:
+        results = [
+            TrafficSimulator(cfg, forecaster).run(controller)
+            for controller in ("fixed", "longest_queue", "max_pressure", "fpac")
+        ]
+        comparison(results)
+        return
+
+    result = TrafficSimulator(cfg, forecaster).run(
+        "fpac" if args.run_fpac else "longest_queue"
+    )
+    print(result.summary())
+
 
 if __name__ == "__main__":
     main()
->>>>>>> origin/main

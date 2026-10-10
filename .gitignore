@@ -28,6 +28,9 @@ build/
 dist/
 *.egg-info/
 
+# Locally trained models can exceed Git hosting file-size limits
+models_saved/*.joblib
+
 # Editor and operating-system files
 .idea/
 .vscode/

@@ -1,78 +1,68 @@
 import heapq
-<<<<<<< HEAD
-class Graph:
-    def __init__(self):self.adj={}
-    def add_edge(self,u,v,w):self.adj.setdefault(u,[]).append((v,w));self.adj.setdefault(v,[])
-    def dijkstra(self,src):
-        dist={v:float('inf') for v in self.adj};prev={v:None for v in self.adj};dist[src]=0;h=[(0,src)]
-        while h:
-            d,u=heapq.heappop(h)
-            if d!=dist[u]:continue
-            for v,w in self.adj[u]:
-                nd=d+w
-                if nd<dist[v]:dist[v]=nd;prev[v]=u;heapq.heappush(h,(nd,v))
-        return dist,prev
-    def shortest_path(self,src,dst):
-        dist,prev=self.dijkstra(src)
-        if dist.get(dst,float('inf'))==float('inf'):return [],float('inf')
-        p=[];u=dst
-        while u is not None:p.append(u);u=prev[u]
-        return p[::-1],dist[dst]
-=======
+
 
 class Graph:
     def __init__(self):
-        self.adjacency_list = {}
+        self.adj = {}
+        self.adjacency_list = self.adj
 
     def add_vertex(self, vertex):
-        self.adjacency_list.setdefault(vertex, [])
+        self.adj.setdefault(vertex, [])
 
-    def add_edge(self, source, destination, weight):
+    def add_edge(self, source, destination, weight, bidirectional=True):
+        if weight < 0:
+            raise ValueError("Dijkstra's algorithm requires non-negative edge weights.")
         self.add_vertex(source)
         self.add_vertex(destination)
-        self.adjacency_list[source].append((destination, weight))
-        self.adjacency_list[destination].append((source, weight))
+        if not any(node == destination for node, _ in self.adj[source]):
+            self.adj[source].append((destination, weight))
+        if bidirectional and not any(node == source for node, _ in self.adj[destination]):
+            self.adj[destination].append((source, weight))
 
     def get_neighbors(self, vertex):
-        return self.adjacency_list.get(vertex, [])
+        return self.adj.get(vertex, [])
 
-    def dijkstra(self, start, destination):
-        if start not in self.adjacency_list or destination not in self.adjacency_list:
-            return float("inf"), []
+    def dijkstra(self, start, destination=None):
+        if start not in self.adj:
+            if destination is not None:
+                return float("inf"), []
+            return {}, {}
 
-        distances = {v: float("inf") for v in self.adjacency_list}
-        previous = {v: None for v in self.adjacency_list}
+        distances = {vertex: float("inf") for vertex in self.adj}
+        previous = {vertex: None for vertex in self.adj}
         distances[start] = 0
-        priority_queue = [(0, start)]
+        pending = [(0, start)]
 
-        while priority_queue:
-            current_distance, current_vertex = heapq.heappop(priority_queue)
-            if current_distance > distances[current_vertex]:
+        while pending:
+            distance, current = heapq.heappop(pending)
+            if distance != distances[current]:
                 continue
-            if current_vertex == destination:
+            if current == destination:
                 break
+            for neighbor, weight in self.adj[current]:
+                candidate = distance + weight
+                if candidate < distances[neighbor]:
+                    distances[neighbor] = candidate
+                    previous[neighbor] = current
+                    heapq.heappush(pending, (candidate, neighbor))
 
-            for neighbor, weight in self.adjacency_list[current_vertex]:
-                distance = current_distance + weight
-                if distance < distances[neighbor]:
-                    distances[neighbor] = distance
-                    previous[neighbor] = current_vertex
-                    heapq.heappush(priority_queue, (distance, neighbor))
-
-        if distances[destination] == float("inf"):
+        if destination is None:
+            return distances, previous
+        if destination not in distances or distances[destination] == float("inf"):
             return float("inf"), []
-
         path = []
         current = destination
         while current is not None:
             path.append(current)
             current = previous[current]
-        path.reverse()
-        return distances[destination], path
+        return distances[destination], path[::-1]
+
+    def shortest_path(self, source, destination):
+        distance, path = self.dijkstra(source, destination)
+        return path, distance
 
     def display(self):
         print("\n========== ROAD NETWORK ==========")
-        for vertex, neighbors in self.adjacency_list.items():
+        for vertex, neighbors in self.adj.items():
             connections = ", ".join(f"{neighbor}({weight})" for neighbor, weight in neighbors)
             print(f"{vertex} -> {connections}")
->>>>>>> origin/main

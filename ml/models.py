@@ -5,7 +5,7 @@ class HistoricalAverage:
     def predict(self,X):return np.full(len(X),self.v)
     def predict_online(self,x):return self.v
 class RandomForest:
-    def __init__(self):self.m=RandomForestRegressor(n_estimators=200,max_depth=18,min_samples_leaf=2,n_jobs=-1,random_state=42)
+    def __init__(self):self.m=RandomForestRegressor(n_estimators=200,max_depth=18,min_samples_leaf=2,n_jobs=1,random_state=42)
     def fit(self,X,y):self.m.fit(X,y);return self
     def predict(self,X):return self.m.predict(X)
     def predict_online(self,x):return float(self.m.predict(np.asarray(x).reshape(1,-1))[0])

@@ -1,82 +1,108 @@
-<<<<<<< HEAD
 # ML + DSA Intelligent Traffic Signal Optimization
 
-This is the merged version of the earlier plain-DSA traffic project.
+Traffic simulation with FIFO lane queues, adaptive signal controllers, temporal forecasting, spillback-aware routing, a four-intersection road network, and an optional shared-policy PPO experiment.
 
-## Preserved DSA layer
-- FIFO lane queues
-- emergency priority queue
-- max heap for phase ranking
-- graph + Dijkstra route planner
-- fixed-time baseline
-- longest-queue baseline
-- Max-Pressure baseline
+## Install
 
-## New research layer
-- traffic-flow forecasting
-- Historical Average baseline
-- Random Forest
-- XGBoost
-- forecast-informed pressure/priority controller (FPAC)
-- MAE/RMSE/R2 evaluation
-- controller comparison
+```powershell
+pip install -r requirements.txt
+```
 
-## Run
+## Interactive animation
 
-1. Install:
-   `pip install -r requirements.txt`
-2. Generate demo traffic:
-   `python tools/generate_sample_data.py`
-3. Train ML:
-   `python main.py --train-ml --data data/sample_traffic.csv --model random_forest`
-4. Compare controllers:
-   `python main.py --compare --data data/sample_traffic.csv --model random_forest`
-5. Run FPAC:
-   `python main.py --run-fpac --data data/sample_traffic.csv --model random_forest`
+Start the single-intersection simulator:
 
-Put PEMS04.csv in data/ when you are ready to use real traffic data.
+```powershell
+python main.py --animate
+```
 
-## Research direction
-ML predicts near-future traffic; DSA makes the interpretable control decision. The project keeps fixed-time, longest-queue and Max-Pressure baselines so the research claim can be tested rather than assumed.
-=======
-# Traffic Signal & Traffic Flow Simulator
+Optionally initialize forecasts using historical traffic data:
 
-A Python DSA project that simulates traffic at multiple intersections and compares fixed traffic signals with adaptive traffic signals.
+```powershell
+python main.py --animate --data data/PEMS04.npz --model random_forest
+```
 
-## DSA Concepts
-- Queue
-- Priority Queue / Heap
-- Graph
-- Dijkstra's Algorithm
-- Greedy Algorithm
-- Dictionaries / Hash Maps
-- Simulation
+The single-intersection view opens paused with a live coach. Drag vehicles between approaches, use **N** to simulate one step, or press **Space** to let the selected controller run. Arrivals vary randomly around the configured mean. Each completed step is appended to `data/simulation_log.csv`; an online queue forecaster learns from each observed state transition, saves to `models_saved/interactive_queue_sgd.joblib`, and reports its forecast error in the coach panel. It warms up on eight transitions and continues learning across resets and launches. This forecast is advisory; it does not replace the selected signal controller.
 
-## Run
-Open a terminal in this folder and run:
+For the connected four-intersection network:
 
-    python main.py
+```powershell
+python main.py --network --animate --controller spillback
+python main.py --network --animate --data data/PEMS04.npz --model random_forest --controller forecast
+```
 
-## Menu
-1. Run Adaptive Traffic Simulation
-2. Run Fixed Traffic Simulation
-3. Display Road Network
-4. Test Shortest Route
-5. Compare Adaptive vs Fixed
-6. Exit
+The network view starts paused in manual traffic mode. Click a node to set a trip start, Shift-click another node to set a destination, and press **V** to release a car onto its graph route. Cars travel along links for multiple one-second simulation steps and wait at junctions for their signal phase. Press **I** and click a road to create a two-minute closure; queued traffic builds upstream, route advice avoids the closed road, and **C** clears incidents. Press **M** to toggle background demand. These are discrete car-following/queue dynamics for instruction and controller evaluation, not calibrated vehicle physics or real-world ETA predictions.
 
-## Project Structure
+For PEMS-guided game learning, start the network view with `--data data/PEMS04.npz`. The PEMS-trained Random Forest provides aggregate historical-flow forecasts as input; each simulated game step is then scored against its observed next network queue before an online SGD queue model updates. Its prequential MAE measures predictions on game-generated data, not PEMS test error. The online game model persists separately at `models_saved/interactive_network_queue_sgd.joblib`; the per-step game records are saved to `data/network_simulation_log_v2.csv`.
 
-traffic_signal_simulator/
-├── main.py
-├── config.py
-├── requirements.txt
-├── README.md
-├── models/
-├── data_structures/
-├── algorithms/
-├── simulation/
-└── utils/
+The route buddy ranks open paths using current road queues, link travel time, capacity and signal delay. It highlights the lowest estimated-time route and compares alternatives using one simulated second per step. Estimates are simulation-time comparisons, not real-world ETAs.
 
-No external Python packages are required.
->>>>>>> origin/main
+The network display shows connected intersections, signal phases and clearance intervals, queues, network throughput, completed trips, wait/travel-time metrics, spillback and incident blockages. Each car follows a shortest open route and has a per-link travel time; a signal or road closure can hold it at a junction and cause an upstream queue.
+
+Each single-intersection step is appended to `data/simulation_log.csv`. Network animation runs append one row per intersection per step to `data/network_simulation_log_v2.csv`. Both logs include run IDs and timestamps, preserve previous runs, and leave `data/sample_traffic.csv` untouched.
+
+### Keyboard controls
+
+- **Space**: pause or resume
+- **N**: advance one step while paused
+- **R**: reset; start a new log run
+- Single intersection: drag vehicles between approaches while paused; **WASD** or right-drag pans the street view
+- Single intersection **1–4**: fixed-time, longest-queue, max-pressure, or forecast-informed controller
+- Network **1–5**: fixed-time, longest-queue, max-pressure, forecast-aware, or spillback-aware controller
+- Network **6**: choose PPO when a trained policy has been loaded
+- Network: click a node to choose the trip start; **Shift-click** another node to choose the destination and compare congestion-aware paths
+- Network **V**: release one car on the selected route; **M** toggles background traffic
+- Network **I** then click a road: create a timed accident closure; **C** clears all accidents
+- **Up/Down**: increase or decrease vehicle arrivals
+- **Esc**: quit
+
+PEMS `.npz` files contain aggregated sensor measurements, not individual car trajectories; the matching `.csv` files contain directed road edges and costs. Use the `.npz` file with `--data` for Random Forest training and forecasts. These sensor measurements cannot identify individual cars or their exact paths. In the four-intersection network simulator, the trained temporal model predicts aggregate sensor-flow trends and uses the bounded trend as a multiplier on recent simulated arrival forecasts. Without `--data`, forecasts are moving averages of arrivals generated in the simulation. The four-intersection view is still an abstract queue-based demonstration, not a simulation of the full 307-sensor PEMS road network.
+
+## Other commands
+
+```powershell
+python tools/generate_sample_data.py
+python main.py --train-ml --data data/PEMS04.npz --model random_forest
+python main.py --network --animate --data data/PEMS04.npz --model random_forest --controller forecast
+python main.py --network --robustness --steps 300 --seeds 3 --data data/PEMS04.npz
+python main.py --train-ml --data data/sample_traffic.csv --model random_forest
+python main.py --compare --data data/sample_traffic.csv --model random_forest
+python main.py --run-fpac --data data/sample_traffic.csv --model random_forest
+python main.py --network --steps 300 --controller spillback
+python main.py --network --robustness --steps 300 --seeds 3
+```
+
+The robustness suite compares fixed-time, longest-queue, forecast-aware, and spillback-aware controllers on matched seeds under nominal, low/peak demand, noisy/missing sensors, a reduced-capacity road incident, and combined stress. It reports average wait, average queue, completed-trip travel time, throughput, and spillback, with across-seed standard deviation and an approximate 95% confidence interval. Detailed per-seed measurements are written to `results/network_robustness.csv`.
+
+## Shared-policy PPO (optional)
+
+Install the reinforcement-learning dependencies:
+
+```powershell
+pip install -r requirements-rl.txt
+```
+
+Train forecast-enabled PPO and a matched current-state-only ablation:
+
+```powershell
+python main.py --network --train-ppo --timesteps 50000
+python main.py --network --train-ppo-current-only --timesteps 50000
+python main.py --network --controller ppo --steps 300
+python main.py --network --controller ppo --current-only --steps 300
+python main.py --network --controller ppo --robustness --steps 300 --seeds 3
+python main.py --network --controller ppo --current-only --robustness --steps 300 --seeds 3
+```
+
+One policy is shared across intersections and emits one phase action per intersection. Minimum green duration and an all-red clearance interval are enforced by the simulator. PPO reward accounts for vehicles served, network queues, and blocked movements. Compare the forecast-enabled and current-state-only models using matched seeds and scenarios; measure results rather than assuming forecasts improve performance.
+
+The CLI defaults to 5,000 PPO steps for a shorter initial run; use a larger `--timesteps` value for research training. Training reports progress periodically. If you press Ctrl+C, the current partial model is saved and the program exits cleanly; evaluate it only as an intermediate checkpoint, not as a converged policy.
+
+The two PPO robustness commands save their per-seed results separately (`network_robustness.csv` and `network_robustness_current_only.csv`) so the ablation outputs are easy to compare.
+
+## Project structure
+
+- `models/`: vehicles, lanes, and intersections
+- `simulation/`: single and multi-intersection engines, PPO environment, robustness scenarios, CSV logs, and Pygame viewers
+- `algorithms/`: signal control and routing
+- `ml/`: traffic-flow data, forecasting, and model training
+- `data/`: sample and PEMS traffic datasets
